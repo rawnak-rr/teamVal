@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>teamval</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="container">
+
+    <div class="header">
+      <h1><span class="prompt">&gt;</span> <span class="name">teamval</span></h1>
+    </div>
+
+    <div class="card">
+      <div class="prompt-line">
+        <span class="p">&gt;</span> select region, map, and team to analyze agent compositions
+      </div>
+
+      <div class="controls">
+        <select id="region-select" aria-label="Select region">
+          <option value="">select region</option>
+        </select>
+
+        <select id="map-select" aria-label="Select map">
+          <option value="">select map</option>
+        </select>
+
+        <span id="team-select-wrapper" class="hidden">
+          <select id="team-select" aria-label="Select team">
+            <option value="">select team</option>
+          </select>
+        </span>
+
+        <button id="search-btn" class="search-btn">search</button>
+
+        <span class="separator">|</span>
+
+        <button id="browse-btn">browse all</button>
+      </div>
+
+      <div class="log" id="log"></div>
+
+      <div class="results hidden" id="results"></div>
+    </div>
+
+    <div class="footer">
+      powered by <a href="https://github.com/axsddlr/vlrggapi" target="_blank" rel="noopener">vlrggapi</a>
+      &middot; data from <a href="https://vlr.gg" target="_blank" rel="noopener">vlr.gg</a>
+    </div>
+
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/aggregator.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
