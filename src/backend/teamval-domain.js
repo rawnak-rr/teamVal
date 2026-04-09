@@ -184,11 +184,104 @@ export function buildTeamMapData(matchDetails, teamName, mapName) {
   return { agents, winRate, wins, losses, totalGames };
 }
 
+function buildCompositionKey(agents) {
+  return [...agents]
+    .map((agent) => (agent || '').trim())
+    .filter(Boolean)
+    .sort((a, b) => a.localeCompare(b))
+    .join('|');
+}
+
+export function buildTeamMapCompositions(matchDetails, teamName, mapName) {
+  const compositions = new Map();
+  const maps = [];
+  let wins = 0;
+  let losses = 0;
+  let totalGames = 0;
+
+  for (const detail of matchDetails) {
+    const teamIndex = findTeamIndex(detail, teamName);
+    if (teamIndex === -1) continue;
+
+    const teamKey = teamIndex === 0 ? 'team1' : 'team2';
+    const oppKey = teamIndex === 0 ? 'team2' : 'team1';
+    const opponent = detail.teams?.[teamIndex === 0 ? 1 : 0]?.name || '';
+
+    for (const map of detail.maps || []) {
+      if (!map.map_name) continue;
+      if (normalizeName(map.map_name) !== normalizeName(mapName)) continue;
+
+      const players = map.players?.[teamKey] || [];
+      const agents = players
+        .map((player) => player.agent)
+        .filter(Boolean);
+
+      totalGames += 1;
+
+      const teamScore = parseInt(map.score?.[teamKey], 10) || 0;
+      const oppScore = parseInt(map.score?.[oppKey], 10) || 0;
+      const won = teamScore > oppScore;
+      if (won) wins += 1;
+      else losses += 1;
+
+      maps.push({
+        matchId: detail.match_id || '',
+        url: detail.url || '',
+        date: detail.date || '',
+        eventTitle: detail.eventTitle || '',
+        opponent,
+        agents,
+        won,
+        score: {
+          team: teamScore,
+          opponent: oppScore
+        }
+      });
+
+      if (agents.length === 0) continue;
+
+      const key = buildCompositionKey(agents);
+      if (!compositions.has(key)) {
+        compositions.set(key, {
+          agents: [...agents].sort((a, b) => a.localeCompare(b)),
+          count: 0,
+          wins: 0,
+          losses: 0
+        });
+      }
+
+      const entry = compositions.get(key);
+      entry.count += 1;
+      if (won) entry.wins += 1;
+      else entry.losses += 1;
+    }
+  }
+
+  const groupedCompositions = [...compositions.values()].sort((a, b) => {
+    if (b.count !== a.count) return b.count - a.count;
+    return a.agents.join(', ').localeCompare(b.agents.join(', '));
+  });
+
+  maps.sort((a, b) => {
+    if (a.date === b.date) return String(b.matchId).localeCompare(String(a.matchId));
+    return String(b.date).localeCompare(String(a.date));
+  });
+
+  return {
+    compositions: groupedCompositions,
+    maps,
+    winRate: totalGames > 0 ? wins / totalGames : 0,
+    wins,
+    losses,
+    totalGames
+  };
+}
+
 export function buildEventMapOverview(matchDetails, teams, mapName) {
   const overview = [];
 
   for (const teamName of teams) {
-    const data = buildTeamMapData(matchDetails, teamName, mapName);
+    const data = buildTeamMapCompositions(matchDetails, teamName, mapName);
     if (data.totalGames === 0) continue;
 
     overview.push({
@@ -197,7 +290,7 @@ export function buildEventMapOverview(matchDetails, teams, mapName) {
       losses: data.losses,
       winRate: data.winRate,
       gamesPlayed: data.totalGames,
-      topAgents: data.agents.slice(0, 3).map((agent) => agent.name)
+      topComposition: data.compositions[0]?.agents || []
     });
   }
 

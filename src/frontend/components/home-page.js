@@ -15,7 +15,9 @@ async function fetchJSON(url) {
   const payload = await response.json();
 
   if (!response.ok) {
-    throw new Error(payload?.error || `Request failed with HTTP ${response.status}`);
+    const error = new Error(payload?.error || `Request failed with HTTP ${response.status}`);
+    error.status = response.status;
+    throw error;
   }
 
   return payload;
@@ -47,7 +49,7 @@ export function HomePage() {
         setLogs([
           { message: 'backend connected', type: 'success' },
           {
-            message: `loaded ${payload.summary.matchCount} matches across ${payload.summary.eventCount} events`,
+            message: `loaded ${payload.summary.matchCount} matches across ${payload.summary.eventCount} events since ${payload.summary.windowStart}`,
             type: 'success'
           },
           { message: 'select a region to begin', type: 'info' }
@@ -55,7 +57,18 @@ export function HomePage() {
       } catch (error) {
         if (cancelled) return;
         console.error('[teamval] loadBootstrap error:', error);
-        setLogs([{ message: `error: ${error.message}`, type: 'error' }]);
+        setLogs([
+              {
+                message:
+                  error.status === 503
+                    ? 'backend unavailable: vlr.gg scrape source rejected the request'
+                    : `error: ${error.message}`,
+                type: 'error'
+              },
+          ...(error.status === 503
+            ? [{ message: 'retry after the upstream service is available again', type: 'info' }]
+            : [])
+        ]);
       }
     }
 
@@ -146,7 +159,7 @@ export function HomePage() {
 
       setLogs([
         { message: `found ${payload.matchCount} matches for ${teamName.toLowerCase()}`, type: 'success' },
-        { message: `found ${payload.data.totalGames} games on ${selectedMap.toLowerCase()}`, type: 'success' }
+        { message: `found ${payload.data.totalGames} ${selectedMap.toLowerCase()} maps for ${teamName.toLowerCase()}`, type: 'success' }
       ]);
       setSelectedTeam(teamName);
       setTeamResult(payload);
@@ -278,19 +291,19 @@ export function HomePage() {
             <div className="results-header">AGENT COMPOSITION</div>
             <div className="results-divider">{'\u2500'.repeat(60)}</div>
 
-            {teamResult.data.agents.length === 0 ? (
+            {teamResult.data.compositions.length === 0 ? (
               <div className="no-data">no agent data available</div>
             ) : (
-              teamResult.data.agents.map((agent) => {
-                const percentage = teamResult.data.totalGames > 0 ? (agent.count / teamResult.data.totalGames) * 100 : 0;
+              teamResult.data.compositions.map((composition) => {
+                const percentage = teamResult.data.totalGames > 0 ? (composition.count / teamResult.data.totalGames) * 100 : 0;
                 return (
-                  <div className="agent-row" key={agent.name}>
-                    <span className="agent-name">{agent.name}</span>
+                  <div className="agent-row" key={composition.agents.join('|')}>
+                    <span className="agent-name">{composition.agents.join(', ').toLowerCase()}</span>
                     <div className="agent-bar-container">
                       <div className="agent-bar" style={{ width: `${percentage}%` }} />
                     </div>
                     <span className="agent-games">
-                      {agent.count}/{teamResult.data.totalGames}
+                      {composition.count}/{teamResult.data.totalGames}
                     </span>
                     <span className="agent-pct">{Math.round(percentage)}%</span>
                   </div>
@@ -321,6 +334,25 @@ export function HomePage() {
                 );
               })()}
             </div>
+
+            <div className="winrate-section">
+              <div className="results-header">RECENT MAPS</div>
+              <div className="results-divider">{'\u2500'.repeat(60)}</div>
+              {teamResult.data.maps.map((entry) => (
+                <div className="agent-row" key={`${entry.matchId}-${entry.date}-${entry.opponent}`}>
+                  <span className="agent-name">
+                    {entry.date} · {entry.eventTitle.toLowerCase()} · {entry.opponent.toLowerCase()}
+                  </span>
+                  <div className="agent-bar-container" style={{ width: '100%', background: 'transparent', border: '0', padding: 0 }}>
+                    {entry.agents.join(', ').toLowerCase()}
+                  </div>
+                  <span className="agent-games">
+                    {entry.score.team}-{entry.score.opponent}
+                  </span>
+                  <span className={`agent-pct ${entry.won ? 'success' : 'error'}`}>{entry.won ? 'W' : 'L'}</span>
+                </div>
+              ))}
+            </div>
           </div>
         ) : null}
 
@@ -335,7 +367,7 @@ export function HomePage() {
                 <span style={{ textAlign: 'center' }}>w</span>
                 <span style={{ textAlign: 'center' }}>l</span>
                 <span style={{ textAlign: 'center' }}>win%</span>
-                <span>top agents</span>
+                <span>top comp</span>
               </div>
 
               {browseOverview.overview.map((row) => {
@@ -353,7 +385,7 @@ export function HomePage() {
                     <span className="browse-w">{row.wins}</span>
                     <span className="browse-l">{row.losses}</span>
                     <span className={`browse-winpct winrate-label ${winRateClass}`}>{percentage}%</span>
-                    <span className="browse-agents">{row.topAgents.join(', ')}</span>
+                    <span className="browse-agents">{row.topComposition.join(', ')}</span>
                   </button>
                 );
               })}
@@ -363,11 +395,7 @@ export function HomePage() {
       </div>
 
       <div className="footer">
-        powered by{' '}
-        <a href="https://github.com/axsddlr/vlrggapi" target="_blank" rel="noopener noreferrer">
-          vlrggapi
-        </a>{' '}
-        · data from{' '}
+        scraped directly from{' '}
         <a href="https://vlr.gg" target="_blank" rel="noopener noreferrer">
           vlr.gg
         </a>

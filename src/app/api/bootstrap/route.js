@@ -9,7 +9,7 @@ export async function GET() {
     console.error('[teamval] bootstrap route error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to load bootstrap data.' },
-      { status: 500 }
+      { status: error.status || 500 }
     );
   }
 }

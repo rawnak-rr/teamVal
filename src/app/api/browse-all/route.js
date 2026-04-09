@@ -13,7 +13,7 @@ export async function GET(request) {
     console.error('[teamval] browse-all route error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to load region overview.' },
-      { status: 500 }
+      { status: error.status || 500 }
     );
   }
 }

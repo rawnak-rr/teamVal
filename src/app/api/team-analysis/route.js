@@ -14,7 +14,7 @@ export async function GET(request) {
     console.error('[teamval] team-analysis route error:', error);
     return NextResponse.json(
       { error: error.message || 'Failed to load team analysis.' },
-      { status: 500 }
+      { status: error.status || 500 }
     );
   }
 }
