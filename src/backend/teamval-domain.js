@@ -205,6 +205,7 @@ export function buildTeamMapCompositions(matchDetails, teamName, mapName) {
 
     const teamKey = teamIndex === 0 ? 'team1' : 'team2';
     const oppKey = teamIndex === 0 ? 'team2' : 'team1';
+    const selectedTeam = detail.teams?.[teamIndex]?.name || teamName;
     const opponent = detail.teams?.[teamIndex === 0 ? 1 : 0]?.name || '';
 
     for (const map of detail.maps || []) {
@@ -229,8 +230,11 @@ export function buildTeamMapCompositions(matchDetails, teamName, mapName) {
         url: detail.url || '',
         date: detail.date || '',
         eventTitle: detail.eventTitle || '',
+        team: selectedTeam,
         opponent,
         agents,
+        teamPlayers: map.players?.[teamKey] || [],
+        opponentPlayers: map.players?.[oppKey] || [],
         won,
         score: {
           team: teamScore,

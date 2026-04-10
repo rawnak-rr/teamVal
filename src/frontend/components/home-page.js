@@ -28,6 +28,7 @@ export function HomePage() {
   const [selectedRegion, setSelectedRegion] = useState('');
   const [selectedMap, setSelectedMap] = useState('');
   const [selectedTeam, setSelectedTeam] = useState('');
+  const [selectedMatchId, setSelectedMatchId] = useState('');
   const [logs, setLogs] = useState([]);
   const [teamResult, setTeamResult] = useState(null);
   const [browseOverview, setBrowseOverview] = useState(null);
@@ -85,6 +86,7 @@ export function HomePage() {
   function clearResults() {
     setTeamResult(null);
     setBrowseOverview(null);
+    setSelectedMatchId('');
   }
 
   function onRegionChange(region) {
@@ -163,6 +165,7 @@ export function HomePage() {
       ]);
       setSelectedTeam(teamName);
       setTeamResult(payload);
+      setSelectedMatchId(payload.data.maps[0]?.matchId || '');
     } catch (error) {
       setLogs([{ message: `error: ${error.message}`, type: 'error' }]);
     }
@@ -204,6 +207,11 @@ export function HomePage() {
       setLogs([{ message: `error: ${error.message}`, type: 'error' }]);
     }
   }
+
+  const selectedMatch =
+    teamResult?.data?.maps.find((entry) => entry.matchId === selectedMatchId) ||
+    teamResult?.data?.maps?.[0] ||
+    null;
 
   return (
     <div className="container">
@@ -338,20 +346,76 @@ export function HomePage() {
             <div className="winrate-section">
               <div className="results-header">RECENT MAPS</div>
               <div className="results-divider">{'\u2500'.repeat(60)}</div>
-              {teamResult.data.maps.map((entry) => (
-                <div className="agent-row" key={`${entry.matchId}-${entry.date}-${entry.opponent}`}>
-                  <span className="agent-name">
-                    {entry.date} · {entry.eventTitle.toLowerCase()} · {entry.opponent.toLowerCase()}
-                  </span>
-                  <div className="agent-bar-container" style={{ width: '100%', background: 'transparent', border: '0', padding: 0 }}>
-                    {entry.agents.join(', ').toLowerCase()}
+              <div className="match-list">
+                {teamResult.data.maps.map((entry) => (
+                  <button
+                    key={`${entry.matchId}-${entry.date}-${entry.opponent}`}
+                    type="button"
+                    className={`match-list-item${selectedMatch?.matchId === entry.matchId ? ' active' : ''}`}
+                    onClick={() => setSelectedMatchId(entry.matchId)}
+                  >
+                    <span className="match-list-meta">
+                      {entry.date} · {entry.eventTitle.toLowerCase()}
+                    </span>
+                    <span className="match-list-title">
+                      {entry.team.toLowerCase()} vs {entry.opponent.toLowerCase()}
+                    </span>
+                    <span className="match-list-score">
+                      {entry.score.team}-{entry.score.opponent} {entry.won ? 'W' : 'L'}
+                    </span>
+                  </button>
+                ))}
+              </div>
+
+              {selectedMatch ? (
+                <div className="match-detail">
+                  <div className="match-detail-header">
+                    <div>
+                      <div className="match-detail-title">
+                        {selectedMatch.team.toLowerCase()} vs {selectedMatch.opponent.toLowerCase()}
+                      </div>
+                      <div className="match-detail-meta">
+                        {selectedMatch.date} · {selectedMatch.eventTitle.toLowerCase()} · {teamResult.map.toLowerCase()}
+                      </div>
+                    </div>
+                    <div className={`match-detail-result ${selectedMatch.won ? 'success' : 'error'}`}>
+                      {selectedMatch.score.team}-{selectedMatch.score.opponent} {selectedMatch.won ? 'W' : 'L'}
+                    </div>
                   </div>
-                  <span className="agent-games">
-                    {entry.score.team}-{entry.score.opponent}
-                  </span>
-                  <span className={`agent-pct ${entry.won ? 'success' : 'error'}`}>{entry.won ? 'W' : 'L'}</span>
+
+                  <div className="lineup-grid">
+                    <div className="lineup-card">
+                      <div className="lineup-heading">{selectedMatch.team.toLowerCase()}</div>
+                      <div className="lineup-list">
+                        {selectedMatch.teamPlayers.map((player) => (
+                          <div
+                            key={`${selectedMatch.matchId}-team-${player.name}-${player.agent}`}
+                            className="lineup-player"
+                          >
+                            <span className="lineup-player-name">{player.name.toLowerCase()}</span>
+                            <span className="lineup-player-agent">{player.agent.toLowerCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="lineup-card">
+                      <div className="lineup-heading">{selectedMatch.opponent.toLowerCase()}</div>
+                      <div className="lineup-list">
+                        {selectedMatch.opponentPlayers.map((player) => (
+                          <div
+                            key={`${selectedMatch.matchId}-opp-${player.name}-${player.agent}`}
+                            className="lineup-player"
+                          >
+                            <span className="lineup-player-name">{player.name.toLowerCase()}</span>
+                            <span className="lineup-player-agent">{player.agent.toLowerCase()}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
                 </div>
-              ))}
+              ) : null}
             </div>
           </div>
         ) : null}
