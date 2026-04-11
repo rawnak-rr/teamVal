@@ -10,6 +10,12 @@ function classifyWinRate(winRate) {
   return 'bad';
 }
 
+function titleCase(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
 async function fetchJSON(url) {
   const response = await fetch(url);
   const payload = await response.json();
@@ -38,37 +44,29 @@ export function HomePage() {
 
     async function loadBootstrap() {
       try {
-        setLogs([
-          { message: 'initializing - loading backend data', type: 'info' },
-          { message: 'requesting bootstrap data', type: 'loading' }
-        ]);
+        setLogs([{ message: 'Loading match data', type: 'loading' }]);
 
         const payload = await fetchJSON('/api/bootstrap');
         if (cancelled) return;
 
         setBootstrap(payload);
         setLogs([
-          { message: 'backend connected', type: 'success' },
           {
-            message: `loaded ${payload.summary.matchCount} matches across ${payload.summary.eventCount} events since ${payload.summary.windowStart}`,
+            message: `${payload.summary.matchCount} matches loaded from ${payload.summary.windowStart}`,
             type: 'success'
-          },
-          { message: 'select a region to begin', type: 'info' }
+          }
         ]);
       } catch (error) {
         if (cancelled) return;
         console.error('[teamval] loadBootstrap error:', error);
         setLogs([
-              {
-                message:
-                  error.status === 503
-                    ? 'backend unavailable: vlr.gg scrape source rejected the request'
-                    : `error: ${error.message}`,
-                type: 'error'
-              },
-          ...(error.status === 503
-            ? [{ message: 'retry after the upstream service is available again', type: 'info' }]
-            : [])
+          {
+            message:
+              error.status === 503
+                ? 'vlr.gg is not available right now'
+                : error.message,
+            type: 'error'
+          }
         ]);
       }
     }
@@ -82,6 +80,13 @@ export function HomePage() {
 
   const regionSnapshot = bootstrap?.regionData?.[selectedRegion] || null;
   const regionTeams = regionSnapshot?.teams || [];
+  const status = logs[0] || { message: 'Choose a region, map, and team', type: 'info' };
+  const selectedMatch =
+    teamResult?.data?.maps.find((entry) => entry.matchId === selectedMatchId) ||
+    teamResult?.data?.maps?.[0] ||
+    null;
+  const winRate = teamResult ? Math.round(teamResult.data.winRate * 100) : 0;
+  const winRateClass = classifyWinRate(winRate);
 
   function clearResults() {
     setTeamResult(null);
@@ -95,51 +100,46 @@ export function HomePage() {
     clearResults();
 
     if (!region) {
-      setLogs([{ message: 'select a region to begin', type: 'info' }]);
+      setLogs([{ message: 'Choose a region to continue', type: 'info' }]);
       return;
     }
 
     if (!bootstrap) {
-      setLogs([{ message: 'backend data is still loading', type: 'error' }]);
+      setLogs([{ message: 'Match data is still loading', type: 'error' }]);
       return;
     }
 
     const snapshot = bootstrap.regionData[region];
-    setLogs([
-      {
-        message: `${region} - ${snapshot.teamCount} teams across ${snapshot.eventCount} events`,
-        type: 'info'
-      },
-      ...snapshot.eventNames.map((name) => ({ message: `  ${name}`, type: 'info' }))
-    ]);
+    setLogs([{ message: `${snapshot.teamCount} teams available in ${region}`, type: 'success' }]);
+  }
+
+  function onMapChange(map) {
+    setSelectedMap(map);
+    clearResults();
+    setLogs([{ message: map ? `${map} selected` : 'Choose a map to continue', type: 'info' }]);
   }
 
   function clearBrowse() {
     clearResults();
-    setLogs([{ message: 'select a map, region, and team to analyze', type: 'info' }]);
+    setLogs([{ message: 'Choose a region, map, and team', type: 'info' }]);
   }
 
   async function onSearch(teamName = selectedTeam) {
-    if (!selectedMap) {
-      setLogs([{ message: 'please select a map first', type: 'error' }]);
+    if (!selectedRegion) {
+      setLogs([{ message: 'Choose a region first', type: 'error' }]);
       return;
     }
-    if (!selectedRegion) {
-      setLogs([{ message: 'please select a region first', type: 'error' }]);
+    if (!selectedMap) {
+      setLogs([{ message: 'Choose a map first', type: 'error' }]);
       return;
     }
     if (!teamName) {
-      setLogs([{ message: 'please select a team first', type: 'error' }]);
+      setLogs([{ message: 'Choose a team first', type: 'error' }]);
       return;
     }
 
     clearResults();
-    setLogs([
-      {
-        message: `analyzing ${teamName.toLowerCase()} on ${selectedMap.toLowerCase()} (${selectedRegion})`,
-        type: 'loading'
-      }
-    ]);
+    setLogs([{ message: `Checking ${teamName} on ${selectedMap}`, type: 'loading' }]);
 
     try {
       const params = new URLSearchParams({
@@ -150,44 +150,37 @@ export function HomePage() {
       const payload = await fetchJSON(`/api/team-analysis?${params.toString()}`);
 
       if (payload.matchCount === 0) {
-        setLogs([{ message: `no matches found for ${teamName.toLowerCase()}`, type: 'error' }]);
+        setLogs([{ message: `No matches found for ${teamName}`, type: 'error' }]);
         return;
       }
 
       if (payload.data.totalGames === 0) {
-        setLogs([{ message: `no games on ${selectedMap.toLowerCase()} found for ${teamName.toLowerCase()}`, type: 'error' }]);
+        setLogs([{ message: `No ${selectedMap} maps found for ${teamName}`, type: 'error' }]);
         return;
       }
 
-      setLogs([
-        { message: `found ${payload.matchCount} matches for ${teamName.toLowerCase()}`, type: 'success' },
-        { message: `found ${payload.data.totalGames} ${selectedMap.toLowerCase()} maps for ${teamName.toLowerCase()}`, type: 'success' }
-      ]);
+      setLogs([{ message: `${payload.data.totalGames} ${selectedMap} maps found`, type: 'success' }]);
       setSelectedTeam(teamName);
       setTeamResult(payload);
+      setBrowseOverview(null);
       setSelectedMatchId(payload.data.maps[0]?.matchId || '');
     } catch (error) {
-      setLogs([{ message: `error: ${error.message}`, type: 'error' }]);
+      setLogs([{ message: error.message, type: 'error' }]);
     }
   }
 
   async function onBrowse() {
-    if (!selectedMap) {
-      setLogs([{ message: 'please select a map first', type: 'error' }]);
+    if (!selectedRegion) {
+      setLogs([{ message: 'Choose a region first', type: 'error' }]);
       return;
     }
-    if (!selectedRegion) {
-      setLogs([{ message: 'please select a region first', type: 'error' }]);
+    if (!selectedMap) {
+      setLogs([{ message: 'Choose a map first', type: 'error' }]);
       return;
     }
 
     clearResults();
-    setLogs([
-      {
-        message: `loading all ${selectedRegion} teams on ${selectedMap.toLowerCase()}`,
-        type: 'loading'
-      }
-    ]);
+    setLogs([{ message: `Loading ${selectedRegion} teams on ${selectedMap}`, type: 'loading' }]);
 
     try {
       const params = new URLSearchParams({
@@ -197,223 +190,220 @@ export function HomePage() {
       const payload = await fetchJSON(`/api/browse-all?${params.toString()}`);
 
       if (payload.overview.length === 0) {
-        setLogs([{ message: `no data found for any team on ${selectedMap.toLowerCase()}`, type: 'error' }]);
+        setLogs([{ message: `No ${selectedMap} data found in ${selectedRegion}`, type: 'error' }]);
         return;
       }
 
-      setLogs([{ message: `found data for ${payload.overview.length} teams`, type: 'success' }]);
+      setLogs([{ message: `${payload.overview.length} teams found`, type: 'success' }]);
       setBrowseOverview(payload);
     } catch (error) {
-      setLogs([{ message: `error: ${error.message}`, type: 'error' }]);
+      setLogs([{ message: error.message, type: 'error' }]);
     }
   }
 
-  const selectedMatch =
-    teamResult?.data?.maps.find((entry) => entry.matchId === selectedMatchId) ||
-    teamResult?.data?.maps?.[0] ||
-    null;
-
   return (
-    <div className="container">
-      <div className="header">
-        <h1>
-          <span className="prompt">&gt;</span> <span className="name">teamval</span>
-        </h1>
-      </div>
+    <main className="app-shell">
+      <section className="query-panel" aria-label="Filters">
+        <form
+          className="query-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSearch();
+          }}
+        >
+          <label>
+            <span>Region</span>
+            <select
+              aria-label="Select region"
+              value={selectedRegion}
+              onChange={(event) => onRegionChange(event.target.value)}
+            >
+              <option value="">Choose region</option>
+              {(bootstrap?.regions || []).map((region) => (
+                <option key={region} value={region}>
+                  {region}
+                </option>
+              ))}
+            </select>
+          </label>
 
-      <div className="card">
-        <div className="prompt-line">
-          <span className="p">&gt;</span> select region, map, and team to analyze agent compositions
-        </div>
+          <label>
+            <span>Map</span>
+            <select
+              aria-label="Select map"
+              value={selectedMap}
+              onChange={(event) => onMapChange(event.target.value)}
+            >
+              <option value="">Choose map</option>
+              {MAPS.map((map) => (
+                <option key={map} value={map}>
+                  {map}
+                </option>
+              ))}
+            </select>
+          </label>
 
-        <div className="controls">
-          <select
-            aria-label="Select region"
-            value={selectedRegion}
-            onChange={(event) => onRegionChange(event.target.value)}
-          >
-            <option value="">select region</option>
-            {(bootstrap?.regions || []).map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-
-          <select
-            aria-label="Select map"
-            value={selectedMap}
-            onChange={(event) => {
-              setSelectedMap(event.target.value);
-              clearResults();
-            }}
-          >
-            <option value="">select map</option>
-            {MAPS.map((map) => (
-              <option key={map} value={map}>
-                {map.toLowerCase()}
-              </option>
-            ))}
-          </select>
-
-          {selectedRegion ? (
+          <label>
+            <span>Team</span>
             <select
               aria-label="Select team"
               value={selectedTeam}
               onChange={(event) => setSelectedTeam(event.target.value)}
+              disabled={!selectedRegion}
             >
-              <option value="">select team</option>
+              <option value="">{selectedRegion ? 'Choose team' : 'Choose region first'}</option>
               {regionTeams.map((team) => (
                 <option key={team} value={team}>
-                  {team.toLowerCase()}
+                  {team}
                 </option>
               ))}
             </select>
-          ) : null}
+          </label>
 
-          <button type="button" className="search-btn" onClick={() => onSearch()}>
-            search
-          </button>
+          <div className="actions">
+            <button type="submit" className="primary-action">
+              Analyze team
+            </button>
+            <button type="button" className="secondary-action" onClick={onBrowse}>
+              Browse region
+            </button>
+          </div>
 
-          <span className="separator">|</span>
+          <div className={`status-pill ${status.type}`}>
+            <span />
+            {status.message}
+            {status.type === 'loading' ? <b className="loading-dots" /> : null}
+          </div>
+        </form>
+      </section>
 
-          <button type="button" onClick={onBrowse}>
-            browse all
-          </button>
-        </div>
-
-        <div className="log">
-          {logs.map((entry, index) => (
-            <div
-              key={`${entry.message}-${index}`}
-              className={`log-line${entry.type === 'error' ? ' error' : entry.type === 'success' ? ' success' : ''}`}
-            >
-              <span className="p">&gt;</span> {entry.message}
-              {entry.type === 'loading' ? <span className="loading-dots" /> : null}
-            </div>
-          ))}
-        </div>
+      <section className="workspace">
+        {!teamResult && !browseOverview ? (
+          <div className="empty-state">
+            <p className="panel-label">Ready</p>
+            <h1>Select filters to view data.</h1>
+          </div>
+        ) : null}
 
         {teamResult ? (
-          <div className="results">
-            <div>
-              <div className="results-header">MAP WIN RATE</div>
-              <div className="results-divider">{'\u2500'.repeat(60)}</div>
-              {(() => {
-                const winRate = Math.round(teamResult.data.winRate * 100);
-                const winRateClass = classifyWinRate(winRate);
-                const label = winRate >= 60 ? 'W' : winRate >= 45 ? '~' : 'L';
-
-                return (
-                  <div className="winrate-row">
-                    <span className="winrate-map">{teamResult.map.toLowerCase()}</span>
-                    <div className="winrate-bar-container">
-                      <div className={`winrate-bar ${winRateClass}`} style={{ width: `${winRate}%` }} />
-                    </div>
-                    <span className="winrate-record">
-                      {teamResult.data.wins}/{teamResult.data.totalGames}
-                    </span>
-                    <span className={`winrate-pct winrate-label ${winRateClass}`}>{winRate}%</span>
-                    <span className={`winrate-label ${winRateClass}`}>{label}</span>
-                  </div>
-                );
-              })()}
+          <div className="results-layout" aria-label="Team result">
+            <div className="score-panel">
+              <div>
+                <p className="panel-label">{titleCase(teamResult.team)} on {teamResult.map}</p>
+                <h2>{winRate}%</h2>
+                <p>{teamResult.data.wins} wins from {teamResult.data.totalGames} maps</p>
+              </div>
+              <div className="meter" aria-hidden="true">
+                <div className={`meter-fill ${winRateClass}`} style={{ width: `${winRate}%` }} />
+              </div>
             </div>
 
-            <div className="winrate-section">
-              <div className="results-header">RECENT MAPS</div>
-              <div className="results-divider">{'\u2500'.repeat(60)}</div>
-              <div className="match-list">
-                {teamResult.data.maps.map((entry) => (
-                  <button
-                    key={`${entry.matchId}-${entry.date}-${entry.opponent}`}
-                    type="button"
-                    className={`match-list-item${selectedMatch?.matchId === entry.matchId ? ' active' : ''}`}
-                    onClick={() => setSelectedMatchId(entry.matchId)}
-                  >
-                    <span className="match-list-meta">
-                      {entry.date} · {entry.eventTitle.toLowerCase()}
-                    </span>
-                    <span className="match-list-title">
-                      {entry.team.toLowerCase()} vs {entry.opponent.toLowerCase()}
-                    </span>
-                    <span className="match-list-score">
-                      {entry.score.team}-{entry.score.opponent} {entry.won ? 'W' : 'L'}
-                    </span>
-                  </button>
-                ))}
+            <div className="match-panel">
+              <div className="panel-heading">
+                <div>
+                  <p className="panel-label">Recent maps</p>
+                  <h2>Match history</h2>
+                </div>
+                <span>{teamResult.data.maps.length} maps</span>
               </div>
 
-              {selectedMatch ? (
-                <div className="match-detail">
-                  <div className="match-detail-header">
-                    <div>
-                      <div className="match-detail-title">
-                        {selectedMatch.team.toLowerCase()} vs {selectedMatch.opponent.toLowerCase()}
-                      </div>
-                      <div className="match-detail-meta">
-                        {selectedMatch.date} · {selectedMatch.eventTitle.toLowerCase()} · {teamResult.map.toLowerCase()}
-                      </div>
-                    </div>
-                    <div className={`match-detail-result ${selectedMatch.won ? 'success' : 'error'}`}>
-                      {selectedMatch.score.team}-{selectedMatch.score.opponent} {selectedMatch.won ? 'W' : 'L'}
-                    </div>
-                  </div>
-
-                  <div className="lineup-grid">
-                    <div className="lineup-card">
-                      <div className="lineup-heading">{selectedMatch.team.toLowerCase()}</div>
-                      <div className="lineup-list">
-                        {selectedMatch.teamPlayers.map((player) => (
-                          <div
-                            key={`${selectedMatch.matchId}-team-${player.name}-${player.agent}`}
-                            className="lineup-player"
-                          >
-                            <span className="lineup-player-name">{player.name.toLowerCase()}</span>
-                            <span className="lineup-player-agent">{player.agent.toLowerCase()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    <div className="lineup-card">
-                      <div className="lineup-heading">{selectedMatch.opponent.toLowerCase()}</div>
-                      <div className="lineup-list">
-                        {selectedMatch.opponentPlayers.map((player) => (
-                          <div
-                            key={`${selectedMatch.matchId}-opp-${player.name}-${player.agent}`}
-                            className="lineup-player"
-                          >
-                            <span className="lineup-player-name">{player.name.toLowerCase()}</span>
-                            <span className="lineup-player-agent">{player.agent.toLowerCase()}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
+              <div className="match-grid">
+                <div className="match-list">
+                  {teamResult.data.maps.map((entry) => (
+                    <button
+                      key={`${entry.matchId}-${entry.date}-${entry.opponent}`}
+                      type="button"
+                      className={`match-list-item${selectedMatch?.matchId === entry.matchId ? ' active' : ''}`}
+                      onClick={() => setSelectedMatchId(entry.matchId)}
+                    >
+                      <span className="match-list-meta">
+                        {entry.date} · {entry.eventTitle}
+                      </span>
+                      <span className="match-list-title">
+                        {entry.team} vs {entry.opponent}
+                      </span>
+                      <span className={`match-list-score ${entry.won ? 'good' : 'bad'}`}>
+                        {entry.score.team}-{entry.score.opponent} {entry.won ? 'W' : 'L'}
+                      </span>
+                    </button>
+                  ))}
                 </div>
-              ) : null}
+
+                {selectedMatch ? (
+                  <div className="match-detail">
+                    <div className="match-detail-header">
+                      <div>
+                        <p className="panel-label">Selected map</p>
+                        <h3>{selectedMatch.team} vs {selectedMatch.opponent}</h3>
+                        <span>{selectedMatch.date} · {selectedMatch.eventTitle} · {teamResult.map}</span>
+                      </div>
+                      <strong className={selectedMatch.won ? 'good' : 'bad'}>
+                        {selectedMatch.score.team}-{selectedMatch.score.opponent}
+                      </strong>
+                    </div>
+
+                    <div className="lineup-grid">
+                      <div className="lineup-card">
+                        <h4>{selectedMatch.team}</h4>
+                        <div className="lineup-list">
+                          {selectedMatch.teamPlayers.map((player) => (
+                            <div
+                              key={`${selectedMatch.matchId}-team-${player.name}-${player.agent}`}
+                              className="lineup-player"
+                            >
+                              <span>{player.name}</span>
+                              <strong>{player.agent}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div className="lineup-card">
+                        <h4>{selectedMatch.opponent}</h4>
+                        <div className="lineup-list">
+                          {selectedMatch.opponentPlayers.map((player) => (
+                            <div
+                              key={`${selectedMatch.matchId}-opp-${player.name}-${player.agent}`}
+                              className="lineup-player"
+                            >
+                              <span>{player.name}</span>
+                              <strong>{player.agent}</strong>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
           </div>
         ) : null}
 
         {browseOverview ? (
-          <div className="results">
-            <button type="button" className="back-btn" onClick={clearBrowse}>
-              ← back
-            </button>
+          <div className="browse-panel" aria-label="Region overview">
+            <div className="panel-heading">
+              <div>
+                <p className="panel-label">{selectedRegion} · {selectedMap}</p>
+                <h2>Team overview</h2>
+              </div>
+              <button type="button" className="secondary-action compact" onClick={clearBrowse}>
+                Clear
+              </button>
+            </div>
+
             <div className="browse-table">
               <div className="browse-header">
-                <span>team</span>
-                <span style={{ textAlign: 'center' }}>w</span>
-                <span style={{ textAlign: 'center' }}>l</span>
-                <span style={{ textAlign: 'center' }}>win%</span>
-                <span>top comp</span>
+                <span>Team</span>
+                <span>W</span>
+                <span>L</span>
+                <span>Win</span>
+                <span>Top comp</span>
               </div>
 
               {browseOverview.overview.map((row) => {
                 const percentage = Math.round(row.winRate * 100);
-                const winRateClass = classifyWinRate(percentage);
+                const rowClass = classifyWinRate(percentage);
 
                 return (
                   <button
@@ -423,24 +413,23 @@ export function HomePage() {
                     onClick={() => onSearch(row.team)}
                   >
                     <span className="browse-team">{row.team}</span>
-                    <span className="browse-w">{row.wins}</span>
-                    <span className="browse-l">{row.losses}</span>
-                    <span className={`browse-winpct winrate-label ${winRateClass}`}>{percentage}%</span>
-                    <span className="browse-agents">{row.topComposition.join(', ')}</span>
+                    <span>{row.wins}</span>
+                    <span>{row.losses}</span>
+                    <strong className={rowClass}>{percentage}%</strong>
+                    <span className="browse-agents">{row.topComposition.join(', ') || 'No comp'}</span>
                   </button>
                 );
               })}
             </div>
           </div>
         ) : null}
-      </div>
+      </section>
 
-      <div className="footer">
-        scraped directly from{' '}
+      <footer className="footer">
         <a href="https://vlr.gg" target="_blank" rel="noopener noreferrer">
-          vlr.gg
+          vlr.gg data
         </a>
-      </div>
-    </div>
+      </footer>
+    </main>
   );
 }
