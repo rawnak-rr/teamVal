@@ -296,30 +296,7 @@ export function HomePage() {
 
         {teamResult ? (
           <div className="results">
-            <div className="results-header">AGENT COMPOSITION</div>
-            <div className="results-divider">{'\u2500'.repeat(60)}</div>
-
-            {teamResult.data.compositions.length === 0 ? (
-              <div className="no-data">no agent data available</div>
-            ) : (
-              teamResult.data.compositions.map((composition) => {
-                const percentage = teamResult.data.totalGames > 0 ? (composition.count / teamResult.data.totalGames) * 100 : 0;
-                return (
-                  <div className="agent-row" key={composition.agents.join('|')}>
-                    <span className="agent-name">{composition.agents.join(', ').toLowerCase()}</span>
-                    <div className="agent-bar-container">
-                      <div className="agent-bar" style={{ width: `${percentage}%` }} />
-                    </div>
-                    <span className="agent-games">
-                      {composition.count}/{teamResult.data.totalGames}
-                    </span>
-                    <span className="agent-pct">{Math.round(percentage)}%</span>
-                  </div>
-                );
-              })
-            )}
-
-            <div className="winrate-section">
+            <div>
               <div className="results-header">MAP WIN RATE</div>
               <div className="results-divider">{'\u2500'.repeat(60)}</div>
               {(() => {
